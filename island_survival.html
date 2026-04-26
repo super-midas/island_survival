@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>무인도 생존기</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; touch-action:none; }
+body { background:#1a1a2e; overflow:hidden; font-family:'Noto Sans KR',sans-serif; }
+#gameCanvas { display:block; }
+#ui { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:10; }
+#stats { position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; }
+.stat-bar { background:rgba(0,0,0,0.6); border-radius:20px; padding:4px 10px; display:flex; align-items:center; gap:4px; border:1px solid rgba(255,255,255,0.2); backdrop-filter:blur(4px); }
+.bar-wrap { width:55px; height:7px; background:rgba(255,255,255,0.15); border-radius:4px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:4px; transition:width 0.3s; }
+#hpFill { background:linear-gradient(90deg,#ff4757,#ff6b81); width:100%; }
+#hungerFill { background:linear-gradient(90deg,#ffa502,#ffdd59); width:100%; }
+#inventory { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:5px; pointer-events:auto; }
+.inv-slot { width:50px; height:50px; background:rgba(0,0,0,0.65); border:2px solid rgba(255,255,255,0.2); border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:19px; color:#fff; cursor:pointer; backdrop-filter:blur(4px); position:relative; }
+.inv-slot.selected { border-color:#ffd700; box-shadow:0 0 10px rgba(255,215,0,0.5); }
+.inv-slot .count { position:absolute; bottom:1px; right:3px; font-size:9px; color:#ffd700; font-weight:bold; }
+.inv-slot .dur { position:absolute; bottom:0; left:0; right:0; height:3px; background:#333; border-radius:0 0 8px 8px; overflow:hidden; }
+.inv-slot .dur-fill { height:100%; background:#4cd137; transition:width 0.3s; }
+#joystick-area { position:absolute; bottom:20px; left:20px; width:120px; height:120px; pointer-events:auto; }
+#joystick-base { width:120px; height:120px; background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.25); border-radius:50%; position:absolute; backdrop-filter:blur(4px); }
+#joystick-knob { width:46px; height:46px; background:rgba(255,255,255,0.4); border:2px solid rgba(255,255,255,0.6); border-radius:50%; position:absolute; top:37px; left:37px; box-shadow:0 2px 8px rgba(0,0,0,0.3); }
+#action-btns { position:absolute; bottom:20px; right:20px; display:grid; grid-template-columns:1fr 1fr; gap:7px; pointer-events:auto; }
+.act-btn { width:56px; height:56px; border-radius:50%; border:2px solid rgba(255,255,255,0.3); color:#fff; font-size:20px; background:rgba(0,0,0,0.5); cursor:pointer; backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; transition:all 0.1s; user-select:none; -webkit-user-select:none; }
+.act-btn:active { transform:scale(0.9); background:rgba(255,255,255,0.2); }
+#msgbox { position:absolute; top:44%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.82); color:#fff; padding:14px 22px; border-radius:14px; text-align:center; font-size:13px; line-height:1.6; max-width:270px; border:1px solid rgba(255,255,255,0.2); display:none; pointer-events:none; }
+#charSelect { position:fixed; top:0; left:0; width:100%; height:100%; background:linear-gradient(135deg,#0f2027,#203a43,#2c5364); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; gap:22px; }
+#charSelect h1 { color:#ffd700; font-size:26px; text-shadow:0 0 20px rgba(255,215,0,0.5); }
+#charSelect p { color:#aaa; font-size:13px; }
+.char-options { display:flex; gap:22px; }
+.char-card { width:115px; height:155px; background:rgba(255,255,255,0.08); border:2px solid rgba(255,255,255,0.2); border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; cursor:pointer; transition:all 0.2s; padding:14px; }
+.char-card:hover,.char-card:active { border-color:#ffd700; background:rgba(255,215,0,0.1); transform:scale(1.05); }
+.char-card .char-emoji { font-size:52px; }
+.char-card .char-name { color:#fff; font-size:13px; font-weight:bold; }
+#craftPanel { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(8,8,18,0.96); border:1px solid rgba(255,215,0,0.4); border-radius:16px; padding:14px; width:310px; max-height:72vh; overflow-y:auto; display:none; pointer-events:auto; backdrop-filter:blur(8px); }
+#craftPanel h3 { color:#ffd700; text-align:center; margin-bottom:10px; font-size:15px; }
+.craft-item { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:9px 11px; margin-bottom:7px; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:9px; }
+.craft-item:hover,.craft-item:active { background:rgba(255,215,0,0.15); border-color:#ffd700; }
+.craft-item .ci-icon { font-size:24px; }
+.craft-item .ci-info { flex:1; }
+.craft-item .ci-name { color:#fff; font-size:12px; font-weight:bold; }
+.craft-item .ci-cost { color:#aaa; font-size:10px; }
+.craft-item.disabled { opacity:0.35; pointer-events:none; }
+#craftClose { width:100%; margin-top:6px; padding:9px; background:rgba(255,70,70,0.2); border:1px solid rgba(255,70,70,0.4); border-radius:8px; color:#ff6b81; cursor:pointer; font-size:13px; }
+#fishingUI { position:absolute; top:38%; left:50%; transform:translateX(-50%); display:none; pointer-events:auto; text-align:center; }
+#fishBar { width:260px; height:22px; background:rgba(0,0,0,0.6); border-radius:11px; border:2px solid rgba(255,255,255,0.3); overflow:hidden; position:relative; }
+#fishIndicator { position:absolute; font-size:17px; top:50%; transform:translateY(-50%); pointer-events:none; }
+#fishHint { color:#fff; font-size:12px; margin-top:5px; text-shadow:1px 1px 4px #000; }
+#fishClickArea { margin-top:7px; width:76px; height:34px; background:rgba(0,180,255,0.3); border:2px solid rgba(0,180,255,0.6); border-radius:10px; color:#fff; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; margin-left:auto; margin-right:auto; }
+#timeDisplay { position:absolute; top:10px; right:12px; color:rgba(255,255,255,0.75); font-size:11px; background:rgba(0,0,0,0.45); padding:4px 9px; border-radius:10px; }
+#speechBubble { position:absolute; background:rgba(255,255,255,0.95); border-radius:12px; padding:7px 11px; font-size:11px; color:#333; max-width:190px; text-align:center; display:none; box-shadow:0 2px 12px rgba(0,0,0,0.3); pointer-events:none; }
+#speechBubble::after { content:''; position:absolute; bottom:-8px; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:rgba(255,255,255,0.95); }
+#hintBox { position:absolute; bottom:72px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.65); color:#fff; font-size:11px; padding:5px 14px; border-radius:10px; pointer-events:none; display:none; white-space:nowrap; }
+#sleepOverlay { position:fixed; top:0; left:0; width:100%; height:100%; background:#000; opacity:0; pointer-events:none; z-index:50; transition:opacity 0.8s; }
+</style>
+</head>
+<body>
+<div id="charSelect">
+  <h1>🏝️ 무인도 생존기</h1>
+  <p>캐릭터를 선택하세요</p>
+  <div class="char-options">
+    <div class="char-card" onclick="startGame('male')"><div class="char-emoji">👨</div><div class="char-name">남자</div></div>
+    <div class="char-card" onclick="startGame('female')"><div class="char-emoji">👩</div><div class="char-name">여자</div></div>
+  </div>
+</div>
+<canvas id="gameCanvas"></canvas>
+<div id="sleepOverlay"></div>
+<div id="ui">
+  <div id="stats">
+    <div class="stat-bar">❤️<div class="bar-wrap"><div class="bar-fill" id="hpFill"></div></div></div>
+    <div class="stat-bar">🍖<div class="bar-wrap"><div class="bar-fill" id="hungerFill"></div></div></div>
+  </div>
+  <div id="timeDisplay">☀️ 06:00 (1일)</div>
+  <div id="inventory"></div>
+  <div id="joystick-area"><div id="joystick-base"></div><div id="joystick-knob"></div></div>
+  <div id="action-btns">
+    <div class="act-btn" id="btnA" ontouchstart="onBtnA()">⚡</div>
+    <div class="act-btn" id="btnB" ontouchstart="onBtnB()">🎒</div>
+    <div class="act-btn" id="btnX" ontouchstart="onBtnX()">🍽️</div>
+    <div class="act-btn" id="btnY" ontouchstart="onBtnY()">🏠</div>
+  </div>
+  <div id="craftPanel">
+    <h3 id="craftTitle">🔨 제작대</h3>
+    <div id="craftList"></div>
+    <button id="craftClose" onclick="closeCraft()">✕ 닫기</button>
+  </div>
+  <div id="fishingUI">
+    <div id="fishBar"><div id="fishIndicator">🐟</div></div>
+    <div id="fishHint">낚시 중...</div>
+    <div id="fishClickArea" ontouchstart="catchFish()" onclick="catchFish()">잡기!</div>
+  </div>
+  <div id="hintBox"></div>
+  <div id="msgbox"></div>
+  <div id="speechBubble"></div>
+</div>
+<script>
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+resize();window.addEventListener('resize',resize);
+
+const G={
+  running:false,gender:'male',
+  player:{x:700,y:525,vx:0,vy:0,speed:2.4,hp:100,hunger:100},
+  camera:{x:0,y:0},worldW:1400,worldH:1050,
+  time:360,day:1,
+  inventory:[],selectedSlot:0,
+  trees:[],fruits:[],campfires:[],particles:[],pigs:[],rabbits:[],
+  farmPlots:[],houses:[],cookStations:[],craftBench:null,
+  crafting:false,craftMode:'bench',
+  fishing:false,fishPos:50,fishDir:1,fishActive:false,fishClickable:false,
+  speechQueue:[],
+};
+
+const ITEMS={
+  wood:{icon:'🪵',name:'나무',maxDur:null},
+  axe:{icon:'🪓',name:'도끼',maxDur:30},
+  rod:{icon:'🎣',name:'낚시대',maxDur:20},
+  spear:{icon:'🗡️',name:'창',maxDur:25},
+  fire:{icon:'🔥',name:'모닥불',maxDur:null},
+  fish_raw:{icon:'🐟',name:'생선(날것)',maxDur:null},
+  fish_cook:{icon:'🐠',name:'구운 생선',maxDur:null},
+  meat_raw:{icon:'🥩',name:'고기(날것)',maxDur:null},
+  meat_cook:{icon:'🍖',name:'구운 고기',maxDur:null},
+  fruit:{icon:'🍎',name:'과일',maxDur:null},
+  seed:{icon:'🌱',name:'씨앗',maxDur:null},
+  carrot:{icon:'🥕',name:'당근',maxDur:null},
+  potato:{icon:'🥔',name:'감자',maxDur:null},
+  tomato:{icon:'🍅',name:'토마토',maxDur:null},
+  gratin:{icon:'🥘',name:'그라탱',maxDur:null},
+  soup:{icon:'🥣',name:'야채스프',maxDur:null},
+  stew:{icon:'🍲',name:'스튜',maxDur:null},
+};
+
+const CRAFT_RECIPES=[
+  {id:'axe',icon:'🪓',name:'도끼',cost:{wood:20},desc:'나무 20개'},
+  {id:'rod',icon:'🎣',name:'낚시대',cost:{wood:20},desc:'나무 20개'},
+  {id:'spear',icon:'🗡️',name:'창',cost:{wood:20},desc:'나무 20개'},
+  {id:'fire',icon:'🔥',name:'모닥불',cost:{wood:20},desc:'나무 20개'},
+  {id:'_cookstation',icon:'🍳',name:'조리대+농장',cost:{wood:30},desc:'나무 30개'},
+  {id:'_house',icon:'🏠',name:'집',cost:{wood:60},desc:'나무 60개'},
+];
+
+const COOK_RECIPES=[
+  {id:'gratin',icon:'🥘',name:'그라탱',cost:{potato:2,meat_cook:1},desc:'감자 2개 + 구운고기 1개',eff:{hunger:80,hp:25,thirst:10}},
+  {id:'soup',icon:'🥣',name:'야채스프',cost:{carrot:2,potato:1},desc:'당근 2개 + 감자 1개',eff:{hunger:55,hp:15,thirst:30}},
+  {id:'stew',icon:'🍲',name:'스튜',cost:{tomato:2,meat_raw:1},desc:'토마토 2개 + 날고기 1개',eff:{hunger:70,hp:20,thirst:20}},
+];
+
+const SEED_TYPES=[
+  {id:'carrot',name:'당근',growTime:60},
+  {id:'potato',name:'감자',growTime:80},
+  {id:'tomato',name:'토마토',growTime:70},
+];
+const FISH_TYPES=['붕어','잉어','메기','송어','배스'];
+
+const EAT_EFFECTS={
+  fruit:{hunger:25,hp:0,msg:'🍎 과일! (배고픔+25)'},
+  fish_cook:{hunger:40,hp:10,msg:'🐠 구운 생선! (배고픔+40, HP+10)'},
+  meat_cook:{hunger:60,hp:30,msg:'🍖 구운 고기! (배고픔+60, HP+30)'},
+  fish_raw:{hunger:20,hp:-10,msg:'🤢 날 생선... HP-10'},
+  meat_raw:{hunger:25,hp:-10,msg:'🤢 날고기... HP-10'},
+  carrot:{hunger:20,hp:5,msg:'🥕 당근! (배고픔+20, HP+5)'},
+  potato:{hunger:30,hp:5,msg:'🥔 감자! (배고픔+30, HP+5)'},
+  tomato:{hunger:15,hp:5,msg:'🍅 토마토! (배고픔+15, HP+5)'},
+  gratin:{hunger:80,hp:25,msg:'🥘 그라탱! (배고픔+80, HP+25)'},
+  soup:{hunger:55,hp:15,msg:'🥣 야채스프! (배고픔+55, HP+15)'},
+  stew:{hunger:70,hp:20,msg:'🍲 스튜! (배고픔+70, HP+20)'},
+};
+
+// 조이스틱
+const joy={active:false,id:null,bx:0,by:0,dx:0,dy:0};
+const joyArea=document.getElementById('joystick-area');
+const joyKnob=document.getElementById('joystick-knob');
+const JR=37,JL=60;
+function joyStart(e){const t=e.touches?e.touches[0]:e;const r=joyArea.getBoundingClientRect();joy.active=true;joy.id=t.identifier||0;joy.bx=r.left+JL;joy.by=r.top+JL;}
+function joyMove(e){if(!joy.active)return;const t=[...(e.touches||[e])].find(x=>x.identifier===joy.id)||(e.touches&&e.touches[0])||e;let dx=t.clientX-joy.bx,dy=t.clientY-joy.by;const d=Math.sqrt(dx*dx+dy*dy);if(d>JR){dx=dx/d*JR;dy=dy/d*JR;}joy.dx=dx/JR;joy.dy=dy/JR;joyKnob.style.left=(JL-23+dx)+'px';joyKnob.style.top=(JL-23+dy)+'px';}
+function joyEnd(){joy.active=false;joy.dx=0;joy.dy=0;joyKnob.style.left='37px';joyKnob.style.top='37px';}
+joyArea.addEventListener('touchstart',joyStart,{passive:true});
+joyArea.addEventListener('mousedown',joyStart);
+document.addEventListener('touchmove',joyMove,{passive:true});
+document.addEventListener('mousemove',joyMove);
+document.addEventListener('touchend',joyEnd);
+document.addEventListener('mouseup',joyEnd);
+
+function onBtnA(){if(!G.running)return;if(G.fishing){catchFish();return;}interact();}
+function onBtnB(){if(!G.running)return;const n=nearObject();if(n&&n.type==='bench'){openCraft('bench');return;}if(n&&n.type==='cookstation'){openCraft('cook');return;}cycleInventory();}
+function onBtnX(){if(!G.running)return;useSelectedItem();}
+function onBtnY(){if(!G.running)return;tryEnterHouse();}
+document.getElementById('btnA').addEventListener('click',onBtnA);
+document.getElementById('btnB').addEventListener('click',onBtnB);
+document.getElementById('btnX').addEventListener('click',onBtnX);
+document.getElementById('btnY').addEventListener('click',onBtnY);
+
+function generateWorld(){
+  G.trees=[];G.fruits=[];G.campfires=[];G.pigs=[];G.rabbits=[];G.farmPlots=[];G.houses=[];G.cookStations=[];
+  for(let i=0;i<35;i++){const hp=5+Math.floor(Math.random()*6);G.trees.push({x:100+Math.random()*(G.worldW-200),y:100+Math.random()*(G.worldH-220),hp,maxHp:hp,shakeT:0});}
+  for(let i=0;i<14;i++){G.fruits.push({x:100+Math.random()*(G.worldW-200),y:100+Math.random()*(G.worldH-220),count:2+Math.floor(Math.random()*3),respawn:0});}
+  G.craftBench={x:G.worldW/2,y:G.worldH/2+70};
+  for(let i=0;i<3;i++) G.pigs.push(makePig());
+  for(let i=0;i<2;i++) G.rabbits.push(makeRabbit());
+}
+
+function makePig(){return{x:180+Math.random()*(G.worldW-360),y:180+Math.random()*(G.worldH-420),hp:3,maxHp:3,vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,wanderTimer:Math.random()*3+1,hitFlash:0};}
+function makeRabbit(){return{x:180+Math.random()*(G.worldW-360),y:180+Math.random()*(G.worldH-420),vx:(Math.random()-0.5)*0.5,vy:(Math.random()-0.5)*0.5,wanderTimer:Math.random()*2+0.5,hopTimer:0,hopY:0};}
+
+function addItem(id,count=1){
+  const slot=G.inventory.find(s=>s.id===id&&!ITEMS[id].maxDur);
+  if(slot){slot.count+=count;}else{G.inventory.push({id,icon:ITEMS[id].icon,name:ITEMS[id].name,count,dur:ITEMS[id].maxDur,maxDur:ITEMS[id].maxDur});}
+  renderInventory();
+}
+function removeItem(id,count=1){
+  const slot=G.inventory.find(s=>s.id===id);
+  if(!slot)return false;if((slot.count||1)<count)return false;
+  slot.count=(slot.count||1)-count;
+  if(slot.count<=0)G.inventory.splice(G.inventory.indexOf(slot),1);
+  renderInventory();return true;
+}
+function countItem(id){return G.inventory.filter(s=>s.id===id).reduce((a,s)=>a+(s.count||1),0);}
+function getSelected(){return G.inventory[G.selectedSlot]||null;}
+function cycleInventory(){G.selectedSlot=(G.selectedSlot+1)%(G.inventory.length||1);renderInventory();}
+function selectSlot(i){G.selectedSlot=i;renderInventory();}
+function renderInventory(){
+  document.getElementById('inventory').innerHTML=G.inventory.slice(0,9).map((s,i)=>{
+    const sel=i===G.selectedSlot?'selected':'';
+    const durBar=s.maxDur?`<div class="dur"><div class="dur-fill" style="width:${(s.dur/s.maxDur)*100}%"></div></div>`:'';
+    return`<div class="inv-slot ${sel}" onclick="selectSlot(${i})">${s.icon}<span class="count">${(s.count||1)>1?(s.count||1):''}</span>${durBar}</div>`;
+  }).join('');
+}
+function useDurability(slot){
+  if(!slot.maxDur)return;slot.dur--;
+  if(slot.dur<=0){G.inventory.splice(G.inventory.indexOf(slot),1);showMsg(`💥 ${slot.name}이(가) 부서졌습니다!`);say(`${slot.name}이 부서졌어...`);G.selectedSlot=0;}
+  renderInventory();
+}
+
+function startGame(gender){
+  G.gender=gender;G.player.x=G.worldW/2;G.player.y=G.worldH/2;
+  document.getElementById('charSelect').style.display='none';
+  generateWorld();
+  addItem('axe');
+  const ax=G.inventory.find(s=>s.id==='axe');if(ax){ax.dur=null;ax.maxDur=null;}
+  renderInventory();G.running=true;requestAnimationFrame(loop);
+  setTimeout(()=>say('비행기에서 떨어졌다...! 무인도인가... 살아남아야 해!',4000),800);
+}
+
+function say(text,dur=2500){G.speechQueue.push({text,dur});if(G.speechQueue.length===1)showNextSpeech();}
+function showNextSpeech(){
+  if(!G.speechQueue.length){document.getElementById('speechBubble').style.display='none';return;}
+  const{text,dur}=G.speechQueue[0];
+  const sb=document.getElementById('speechBubble');sb.textContent=text;sb.style.display='block';
+  setTimeout(()=>{G.speechQueue.shift();showNextSpeech();},dur);
+}
+let msgTimer=null;
+function showMsg(text,dur=1900){
+  const m=document.getElementById('msgbox');m.innerHTML=text;m.style.display='block';
+  if(msgTimer)clearTimeout(msgTimer);msgTimer=setTimeout(()=>m.style.display='none',dur);
+}
+
+function nearObject(){
+  const p=G.player;const R=64;
+  for(const t of G.trees)if(Math.hypot(t.x-p.x,t.y-p.y)<R)return{type:'tree',obj:t};
+  for(const f of G.fruits)if(f.count>0&&Math.hypot(f.x-p.x,f.y-p.y)<R)return{type:'fruit',obj:f};
+  if(Math.hypot(G.craftBench.x-p.x,G.craftBench.y-p.y)<74)return{type:'bench',obj:G.craftBench};
+  for(const c of G.campfires)if(Math.hypot(c.x-p.x,c.y-p.y)<66)return{type:'campfire',obj:c};
+  for(const cs of G.cookStations)if(Math.hypot(cs.x-p.x,cs.y-p.y)<66)return{type:'cookstation',obj:cs};
+  for(const pg of G.pigs)if(Math.hypot(pg.x-p.x,pg.y-p.y)<50)return{type:'pig',obj:pg};
+  for(const rb of G.rabbits)if(Math.hypot(rb.x-p.x,rb.y-p.y)<44)return{type:'rabbit',obj:rb};
+  for(const h of G.houses)if(Math.hypot(h.x-p.x,h.y-p.y)<62)return{type:'house',obj:h};
+  for(const fp of G.farmPlots){
+    if(Math.hypot(fp.x-p.x,fp.y-p.y)<42){
+      if(fp.stage===3)return{type:'harvest',obj:fp};
+      if(fp.stage===0)return{type:'farm_empty',obj:fp};
+    }
+  }
+  if(p.y>G.worldH-165)return{type:'water',obj:null};
+  return null;
+}
+
+function interact(){
+  if(G.crafting||G.fishing)return;
+  const n=nearObject();
+  if(!n){showMsg('📍 주변에 상호작용할 것이 없어요');return;}
+  switch(n.type){
+    case'tree':cutTree(n.obj);break;
+    case'fruit':pickFruit(n.obj);break;
+    case'bench':openCraft('bench');break;
+    case'campfire':cookAtCampfire(n.obj);break;
+    case'cookstation':openCraft('cook');break;
+    case'pig':attackPig(n.obj);break;
+    case'rabbit':catchRabbit(n.obj);break;
+    case'house':sleepInHouse();break;
+    case'harvest':harvestFarm(n.obj);break;
+    case'farm_empty':plantSeed(n.obj);break;
+    case'water':startFishing();break;
+  }
+}
+
+function cutTree(tree){
+  const sel=getSelected();if(!sel||sel.id!=='axe'){showMsg('🪓 도끼를 선택하세요!');return;}
+  tree.hp--;tree.shakeT=0.4;useDurability(sel);emitParticles(tree.x,tree.y,'#8B4513',4);
+  if(tree.hp<=0){
+    addItem('wood',5);G.trees.splice(G.trees.indexOf(tree),1);
+    showMsg('🪵 나무를 베었습니다! (+5)');emitParticles(tree.x,tree.y,'#228B22',10);
+    setTimeout(()=>{const hp=5+Math.floor(Math.random()*6);G.trees.push({x:100+Math.random()*(G.worldW-200),y:100+Math.random()*(G.worldH-220),hp,maxHp:hp,shakeT:0});},30000);
+  }else{showMsg(`🌲 나무 HP: ${tree.hp}/${tree.maxHp}`);}
+}
+function pickFruit(fruit){
+  if(fruit.count<=0)return;addItem('fruit');fruit.count--;emitParticles(fruit.x,fruit.y,'#ff4500',5);showMsg('🍎 과일을 땄습니다!');
+  if(fruit.count===0)fruit.respawn=G.time+120;
+}
+function startFishing(){
+  const sel=getSelected();if(!sel||sel.id!=='rod'){showMsg('🎣 낚시대를 선택하세요!');return;}
+  G.fishing=true;G.fishPos=50;G.fishDir=1;G.fishActive=false;G.fishClickable=false;
+  document.getElementById('fishingUI').style.display='block';
+  document.getElementById('fishHint').textContent='🎣 물고기를 기다리는 중...';
+  showMsg('🎣 낚시 중...');setTimeout(activateFish,1000+Math.random()*2000);
+}
+function activateFish(){
+  if(!G.fishing)return;G.fishActive=true;G.fishClickable=true;
+  document.getElementById('fishHint').textContent='🐟 빨리 잡아요!';
+  document.getElementById('fishClickArea').style.background='rgba(255,80,80,0.5)';
+  setTimeout(()=>{
+    if(!G.fishClickable)return;G.fishClickable=false;G.fishActive=false;
+    document.getElementById('fishHint').textContent='놓쳤다...';
+    document.getElementById('fishClickArea').style.background='rgba(0,180,255,0.3)';
+    setTimeout(()=>{if(G.fishing)setTimeout(activateFish,1500+Math.random()*1500);},500);
+  },1000);
+}
+function catchFish(){
+  if(!G.fishing||!G.fishClickable)return;G.fishClickable=false;G.fishActive=false;
+  const type=FISH_TYPES[Math.floor(Math.random()*FISH_TYPES.length)];
+  addItem('fish_raw');const sel=getSelected();if(sel&&sel.id==='rod')useDurability(sel);
+  stopFishing();showMsg(`🐟 ${type}을(를) 잡았습니다!`);say(`${type}을 잡았다!`);
+}
+function stopFishing(){G.fishing=false;G.fishActive=false;G.fishClickable=false;document.getElementById('fishingUI').style.display='none';}
+
+function attackPig(pig){
+  const sel=getSelected();if(!sel||sel.id!=='spear'){showMsg('🗡️ 창을 선택하세요!');return;}
+  pig.hp--;pig.hitFlash=0.4;useDurability(sel);emitParticles(pig.x,pig.y,'#ff6b6b',5);
+  const ang=Math.atan2(pig.y-G.player.y,pig.x-G.player.x);pig.vx=Math.cos(ang)*1.2;pig.vy=Math.sin(ang)*1.2;
+  if(pig.hp<=0){addItem('meat_raw',2);G.pigs.splice(G.pigs.indexOf(pig),1);emitParticles(pig.x,pig.y,'#ff4444',12);showMsg('🐷 돼지를 잡았습니다! 고기 +2');say('고기를 얻었다!');setTimeout(()=>G.pigs.push(makePig()),30000);}
+  else showMsg(`🐷 돼지 HP: ${pig.hp}/${pig.maxHp}`);
+}
+function catchRabbit(rabbit){
+  const sel=getSelected();if(!sel||sel.id!=='spear'){showMsg('🗡️ 창이 필요합니다!');return;}
+  const amt=1+Math.floor(Math.random()*2);addItem('seed',amt);G.rabbits.splice(G.rabbits.indexOf(rabbit),1);
+  emitParticles(rabbit.x,rabbit.y,'#ccc',8);showMsg(`🐰 토끼를 잡았습니다! 씨앗 +${amt}`);say('씨앗이 있었네!');
+  setTimeout(()=>G.rabbits.push(makeRabbit()),60000);
+}
+function plantSeed(plot){
+  if(countItem('seed')===0){showMsg('🌱 씨앗이 없습니다!');return;}
+  removeItem('seed');const st=SEED_TYPES[Math.floor(Math.random()*SEED_TYPES.length)];
+  plot.stage=1;plot.seedType=st.id;plot.timer=st.growTime;
+  emitParticles(plot.x,plot.y,'#4cd137',5);showMsg(`🌱 ${st.name} 씨앗을 심었습니다!`);
+}
+function harvestFarm(plot){
+  if(plot.stage!==3)return;const amt=2+Math.floor(Math.random()*2);addItem(plot.seedType,amt);
+  emitParticles(plot.x,plot.y,'#ffd700',8);showMsg(`✅ ${ITEMS[plot.seedType].name} 수확! (+${amt})`);say('수확했다!');
+  plot.stage=0;plot.seedType=null;
+}
+function cookAtCampfire(campfire){
+  if(countItem('fish_raw')>0){removeItem('fish_raw');addItem('fish_cook');emitParticles(campfire.x,campfire.y,'#ff6600',8);showMsg('🔥 생선을 구웠습니다!');}
+  else if(countItem('meat_raw')>0){removeItem('meat_raw');addItem('meat_cook');emitParticles(campfire.x,campfire.y,'#cc4400',10);showMsg('🔥 고기를 구웠습니다!');}
+  else showMsg('구울 음식이 없습니다');
+}
+function cookDish(id){
+  const r=COOK_RECIPES.find(x=>x.id===id);if(!r)return;
+  const can=Object.entries(r.cost).every(([k,v])=>countItem(k)>=v);
+  if(!can){showMsg('재료가 부족합니다!');return;}
+  Object.entries(r.cost).forEach(([k,v])=>removeItem(k,v));addItem(id);
+  showMsg(`✅ ${r.name}을(를) 완성했습니다!`);closeCraft();
+}
+function useSelectedItem(){
+  const sel=getSelected();if(!sel){showMsg('먹을 것을 선택하세요');return;}
+  const e=EAT_EFFECTS[sel.id];
+  if(e){removeItem(sel.id);G.player.hunger=Math.min(100,G.player.hunger+(e.hunger||0));G.player.hp=Math.max(0,Math.min(100,G.player.hp+(e.hp||0)));showMsg(e.msg);if((e.hp||0)>0)say('맛있어!');}
+  else showMsg('이 아이템은 먹을 수 없습니다');
+}
+function tryEnterHouse(){
+  const n=nearObject();
+  if(n&&n.type==='house')sleepInHouse();
+  else showMsg('🏠 집 근처에서 🏠 버튼을 누르세요');
+}
+function sleepInHouse(){
+  const ov=document.getElementById('sleepOverlay');ov.style.opacity='1';
+  setTimeout(()=>{
+    G.time=360;G.day++;G.player.hp=Math.min(100,G.player.hp+40);G.player.hunger=Math.max(0,G.player.hunger-15);G.player.thirst=Math.max(0,G.player.thirst-15);
+    G.fruits.forEach(f=>{if(f.count===0&&f.respawn>0)f.count=2+Math.floor(Math.random()*3);});
+    G.farmPlots.forEach(fp=>{if(fp.stage>0&&fp.stage<3)fp.stage=3;});
+    ov.style.opacity='0';showMsg(`🌅 ${G.day}일째 아침! HP+40 (집에서 푹 잠)`);say(`${G.day}일째야... 버텨낼 수 있어!`);
+  },900);
+}
+function openCraft(mode){
+  G.crafting=true;G.craftMode=mode;
+  document.getElementById('craftTitle').textContent=mode==='bench'?'🔨 제작대':'🍳 조리대';
+  const list=document.getElementById('craftList');
+  if(mode==='bench'){
+    list.innerHTML=CRAFT_RECIPES.map(r=>{
+      const can=Object.entries(r.cost).every(([k,v])=>countItem(k)>=v);
+      return`<div class="craft-item ${can?'':'disabled'}" onclick="craftItem('${r.id}')"><div class="ci-icon">${r.icon}</div><div class="ci-info"><div class="ci-name">${r.name}</div><div class="ci-cost">필요: ${r.desc}</div></div></div>`;
+    }).join('');
+  }else{
+    list.innerHTML=COOK_RECIPES.map(r=>{
+      const can=Object.entries(r.cost).every(([k,v])=>countItem(k)>=v);
+      const ef=r.eff;const es=`배고픔+${ef.hunger}${ef.hp?', HP+'+ef.hp:''}${ef.thirst?', 갈증+'+ef.thirst:''}`;
+      return`<div class="craft-item ${can?'':'disabled'}" onclick="cookDish('${r.id}')"><div class="ci-icon">${r.icon}</div><div class="ci-info"><div class="ci-name">${r.name}</div><div class="ci-cost">${r.desc}<br><span style="color:#7effa0">${es}</span></div></div></div>`;
+    }).join('');
+  }
+  document.getElementById('craftPanel').style.display='block';
+}
+function closeCraft(){G.crafting=false;document.getElementById('craftPanel').style.display='none';}
+function craftItem(id){
+  const r=CRAFT_RECIPES.find(x=>x.id===id);if(!r)return;
+  if(!Object.entries(r.cost).every(([k,v])=>countItem(k)>=v)){showMsg('재료가 부족합니다!');return;}
+  Object.entries(r.cost).forEach(([k,v])=>removeItem(k,v));
+  if(id==='fire'){G.campfires.push({x:G.player.x+55,y:G.player.y+35});showMsg('🔥 모닥불을 설치했습니다!');}
+  else if(id==='_cookstation'){
+    G.cookStations.push({x:G.player.x+55,y:G.player.y});
+    for(let i=0;i<3;i++)G.farmPlots.push({x:G.player.x+55+(i-1)*46,y:G.player.y+56,stage:0,seedType:null,timer:0});
+    showMsg('🍳 조리대와 농장 칸 3개를 설치했습니다!');say('이제 농사도 할 수 있어!');
+  }else if(id==='_house'){G.houses.push({x:G.player.x,y:G.player.y-30});showMsg('🏠 집을 지었습니다!');say('집이 생겼다!');}
+  else{addItem(id);showMsg(`✅ ${ITEMS[id].name}을(를) 제작했습니다!`);}
+  closeCraft();
+}
+function emitParticles(x,y,color,n){for(let i=0;i<n;i++)G.particles.push({x,y,vx:(Math.random()-0.5)*3,vy:-1-Math.random()*3,color,alpha:1,size:3+Math.random()*4});}
+
+let last=0;
+function loop(ts){if(!G.running){requestAnimationFrame(loop);return;}const dt=Math.min((ts-last)/1000,0.05);last=ts;update(dt);render();requestAnimationFrame(loop);}
+
+function update(dt){
+  const p=G.player;
+  if(!G.crafting&&!G.fishing){p.vx=joy.dx*p.speed;p.vy=joy.dy*p.speed;}else{p.vx=0;p.vy=0;}
+  p.x=Math.max(20,Math.min(G.worldW-20,p.x+p.vx));p.y=Math.max(20,Math.min(G.worldH-20,p.y+p.vy));
+  const sw=canvas.width,sh=canvas.height;
+  G.camera.x=Math.max(0,Math.min(G.worldW-sw,p.x-sw/2));G.camera.y=Math.max(0,Math.min(G.worldH-sh,p.y-sh/2));
+  G.time+=dt*1.5;if(G.time>=1440)G.time=0;
+  p.hunger=Math.max(0,p.hunger-dt*0.4);
+  if(p.hunger<=0)p.hp=Math.max(0,p.hp-dt*1.8);
+  if(G.fishing&&G.fishActive){G.fishPos+=G.fishDir*80*dt;if(G.fishPos>85){G.fishPos=85;G.fishDir=-1;}if(G.fishPos<5){G.fishPos=5;G.fishDir=1;}const ind=document.getElementById('fishIndicator');if(ind)ind.style.left=(G.fishPos*2.4)+'px';}
+  G.particles.forEach(pt=>{pt.x+=pt.vx;pt.y+=pt.vy;pt.vy+=0.1;pt.alpha-=dt*1.5;});G.particles=G.particles.filter(pt=>pt.alpha>0);
+  G.trees.forEach(t=>{if(t.shakeT>0)t.shakeT-=dt;});
+  G.fruits.forEach(f=>{if(f.count===0&&G.time>=f.respawn&&f.respawn>0)f.count=2+Math.floor(Math.random()*3);});
+  G.pigs.forEach(pg=>{
+    if(pg.hitFlash>0)pg.hitFlash-=dt;pg.wanderTimer-=dt;
+    if(pg.wanderTimer<=0){pg.vx=(Math.random()-0.5)*0.3;pg.vy=(Math.random()-0.5)*0.3;pg.wanderTimer=2+Math.random()*4;}
+    pg.x=Math.max(50,Math.min(G.worldW-50,pg.x+pg.vx));pg.y=Math.max(50,Math.min(G.worldH-230,pg.y+pg.vy));
+  });
+  G.rabbits.forEach(rb=>{
+    rb.wanderTimer-=dt;rb.hopTimer-=dt;
+    if(rb.wanderTimer<=0){rb.vx=(Math.random()-0.5)*0.5;rb.vy=(Math.random()-0.5)*0.5;rb.wanderTimer=1.2+Math.random()*2;}
+    if(rb.hopTimer<=0){rb.hopY=-5;rb.hopTimer=1+Math.random()*1.5;}
+    rb.hopY*=0.82;rb.x=Math.max(50,Math.min(G.worldW-50,rb.x+rb.vx));rb.y=Math.max(50,Math.min(G.worldH-230,rb.y+rb.vy));
+  });
+  G.farmPlots.forEach(fp=>{if(fp.stage>0&&fp.stage<3){fp.timer-=dt;if(fp.timer<=0)fp.stage++;}});
+  document.getElementById('hpFill').style.width=p.hp+'%';
+  document.getElementById('hungerFill').style.width=p.hunger+'%';
+  const h=Math.floor(G.time/60),m=Math.floor(G.time%60);const isNight=G.time<360||G.time>1200;
+  document.getElementById('timeDisplay').textContent=`${isNight?'🌙':'☀️'} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')} (${G.day}일)`;
+  const sb=document.getElementById('speechBubble');
+  if(sb.style.display==='block'){sb.style.left=(p.x-G.camera.x-sb.offsetWidth/2)+'px';sb.style.top=(p.y-G.camera.y-82)+'px';}
+  const hb=document.getElementById('hintBox');
+  if(!G.crafting&&!G.fishing){
+    const n=nearObject();
+    if(n){const m={tree:'🌲[⚡]나무베기',fruit:'🍎[⚡]과일따기',bench:'🔨[⚡/🎒]제작',campfire:'🔥[⚡]굽기',cookstation:'🍳[⚡/🎒]조리',pig:'🐷[⚡]창으로공격',rabbit:'🐰[⚡]창으로잡기(씨앗획득)',house:'🏠[🏠]취침',harvest:'🌾[⚡]수확',farm_empty:'🌱[⚡]씨앗심기',water:'🌊[⚡]낚시'};hb.textContent=m[n.type]||'';hb.style.display='block';}
+    else hb.style.display='none';
+  }else hb.style.display='none';
+}
+
+function render(){
+  const sw=canvas.width,sh=canvas.height,cx=G.camera.x,cy=G.camera.y;
+  const isNight=G.time<360||G.time>1200,T=Date.now();
+  ctx.fillStyle=isNight?'#0a2010':'#2a5422';ctx.fillRect(0,0,sw,sh);
+  const gr=ctx.createRadialGradient(sw/2,sh/2,60,sw/2,sh/2,Math.max(sw,sh)/1.4);
+  gr.addColorStop(0,isNight?'rgba(15,70,35,0.8)':'rgba(70,150,55,0.55)');gr.addColorStop(1,isNight?'rgba(0,20,50,0.8)':'rgba(0,50,110,0.6)');
+  ctx.fillStyle=gr;ctx.fillRect(0,0,sw,sh);
+  const wy=(G.worldH-130)-cy;
+  if(wy<sh){
+    const wg=ctx.createLinearGradient(0,wy,0,sh);wg.addColorStop(0,isNight?'rgba(0,35,90,0.92)':'rgba(25,90,190,0.88)');wg.addColorStop(1,isNight?'rgba(0,15,55,1)':'rgba(8,50,140,1)');
+    ctx.fillStyle=wg;ctx.fillRect(0,wy,sw,sh-wy);
+    ctx.strokeStyle='rgba(255,255,255,0.13)';ctx.lineWidth=2;
+    for(let i=0;i<4;i++){ctx.beginPath();const wy2=wy+18+i*22+Math.sin(T/1000+i)*3;ctx.moveTo(0,wy2);for(let x=0;x<sw;x+=40)ctx.quadraticCurveTo(x+20,wy2+Math.sin((x+T/500)*0.1+i)*5,x+40,wy2);ctx.stroke();}
+  }
+  // 집
+  G.houses.forEach(h=>{
+    const hx=h.x-cx,hy=h.y-cy;
+    ctx.fillStyle='#8B6914';ctx.fillRect(hx-38,hy+10,76,40);
+    ctx.fillStyle='#a07820';ctx.fillRect(hx-38,hy+10,76,8);
+    ctx.fillStyle='#c8a84b';ctx.fillRect(hx-38,hy-20,76,32);
+    ctx.fillStyle='#8B2500';ctx.beginPath();ctx.moveTo(hx-44,hy-18);ctx.lineTo(hx,hy-58);ctx.lineTo(hx+44,hy-18);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#a33000';ctx.beginPath();ctx.moveTo(hx-44,hy-18);ctx.lineTo(hx,hy-54);ctx.lineTo(hx+44,hy-18);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#5c3a0a';ctx.fillRect(hx-12,hy+18,24,32);
+    ctx.fillStyle='#ffd700';ctx.beginPath();ctx.arc(hx+8,hy+34,2.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#a8d8ff';ctx.fillRect(hx-32,hy-14,16,14);ctx.fillRect(hx+16,hy-14,16,14);
+    ctx.strokeStyle='#5c3a0a';ctx.lineWidth=1.5;ctx.strokeRect(hx-32,hy-14,16,14);ctx.strokeRect(hx+16,hy-14,16,14);
+    ctx.font='10px sans-serif';ctx.fillStyle='#ffd700';ctx.textAlign='center';ctx.fillText('🏠 집',hx,hy-66);ctx.textAlign='left';
+  });
+  // 농장
+  G.farmPlots.forEach(fp=>{
+    const fx=fp.x-cx,fy=fp.y-cy;
+    ctx.fillStyle='#6b3a1a';ctx.fillRect(fx-20,fy-16,40,30);
+    ctx.strokeStyle='#a06030';ctx.lineWidth=1.5;ctx.strokeRect(fx-20,fy-16,40,30);
+    if(fp.stage===0){ctx.fillStyle='#5a2e10';ctx.fillRect(fx-16,fy-12,32,22);ctx.font='8px sans-serif';ctx.fillStyle='#aaa';ctx.textAlign='center';ctx.fillText('빈 밭',fx,fy+4);ctx.textAlign='left';}
+    else{ctx.font='20px serif';ctx.textAlign='center';ctx.fillText(['🌱','🌿','🌾'][fp.stage-1],fx,fy+6);if(fp.stage===3){ctx.font='12px serif';ctx.fillText(ITEMS[fp.seedType]?.icon||'',fx+14,fy-6);}ctx.textAlign='left';}
+  });
+  // 제작대
+  const bx=G.craftBench.x-cx,by=G.craftBench.y-cy;
+  ctx.fillStyle='#6B3A1F';ctx.beginPath();ctx.roundRect?ctx.roundRect(bx-24,by-14,48,26,5):ctx.rect(bx-24,by-14,48,26);ctx.fill();
+  ctx.strokeStyle='#A0522D';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect?ctx.roundRect(bx-24,by-14,48,26,5):ctx.rect(bx-24,by-14,48,26);ctx.stroke();
+  ctx.font='17px serif';ctx.fillText('🔨',bx-9,by+8);ctx.font='9px sans-serif';ctx.fillStyle='#FFD700';ctx.textAlign='center';ctx.fillText('제작대',bx,by+26);ctx.textAlign='left';
+  // 조리대
+  G.cookStations.forEach(cs=>{
+    const csx=cs.x-cx,csy=cs.y-cy;
+    ctx.fillStyle='#3a3a5c';ctx.beginPath();ctx.roundRect?ctx.roundRect(csx-24,csy-14,48,26,5):ctx.rect(csx-24,csy-14,48,26);ctx.fill();
+    ctx.strokeStyle='#7070c0';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect?ctx.roundRect(csx-24,csy-14,48,26,5):ctx.rect(csx-24,csy-14,48,26);ctx.stroke();
+    ctx.font='17px serif';ctx.fillText('🍳',csx-9,csy+8);ctx.font='9px sans-serif';ctx.fillStyle='#aaddff';ctx.textAlign='center';ctx.fillText('조리대',csx,csy+26);ctx.textAlign='left';
+  });
+  // 모닥불
+  G.campfires.forEach(c=>{
+    const fx=c.x-cx,fy=c.y-cy;
+    const gl=ctx.createRadialGradient(fx,fy,4,fx,fy,42);gl.addColorStop(0,'rgba(255,140,0,0.32)');gl.addColorStop(1,'rgba(255,70,0,0)');ctx.fillStyle=gl;ctx.beginPath();ctx.arc(fx,fy,42,0,Math.PI*2);ctx.fill();
+    ctx.font='22px serif';ctx.fillText('🔥',fx-11,fy+7);
+  });
+  // 나무
+  G.trees.forEach(tr=>{
+    const tx=tr.x-cx,ty=tr.y-cy;if(tx<-70||tx>sw+70||ty<-90||ty>sh+90)return;
+    const shk=tr.shakeT>0?Math.sin(tr.shakeT*40)*4:0;
+    ctx.fillStyle='#8B4513';ctx.fillRect(tx-4+shk,ty-8,8,28);
+    ctx.fillStyle=isNight?'#1a5c1a':'#228B22';ctx.beginPath();ctx.arc(tx+shk,ty-18,20,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=isNight?'#145214':'#2e8b2e';ctx.beginPath();ctx.arc(tx+shk-7,ty-28,14,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(tx+shk+7,ty-28,14,0,Math.PI*2);ctx.fill();
+    if(tr.hp<tr.maxHp){ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(tx-16,ty-48,32,5);ctx.fillStyle='#4cd137';ctx.fillRect(tx-16,ty-48,32*(tr.hp/tr.maxHp),5);}
+  });
+  // 과일나무
+  G.fruits.forEach(f=>{
+    if(f.count===0)return;const fx=f.x-cx,fy=f.y-cy;if(fx<-60||fx>sw+60)return;
+    ctx.fillStyle='#8B4513';ctx.fillRect(fx-3,fy-6,6,20);
+    ctx.fillStyle=isNight?'#3a7d1e':'#4CAF50';ctx.beginPath();ctx.arc(fx,fy-18,18,0,Math.PI*2);ctx.fill();
+    ctx.font='13px serif';ctx.fillText(['🍎','🍋','🍊'][Math.floor(f.x+f.y)%3],fx-7,fy-13);
+    ctx.font='10px sans-serif';ctx.fillStyle='#ffd700';ctx.fillText(`x${f.count}`,fx-7,fy+5);
+  });
+  // 파티클
+  G.particles.forEach(pt=>{ctx.globalAlpha=pt.alpha;ctx.fillStyle=pt.color;ctx.beginPath();ctx.arc(pt.x-cx,pt.y-cy,pt.size,0,Math.PI*2);ctx.fill();});ctx.globalAlpha=1;
+  // 돼지 (반지름 9)
+  G.pigs.forEach(pg=>{
+    const pgx=pg.x-cx,pgy=pg.y-cy;if(pgx<-40||pgx>sw+40)return;
+    ctx.globalAlpha=pg.hitFlash>0?0.5+0.5*Math.sin(pg.hitFlash*40):1;
+    ctx.fillStyle=pg.hitFlash>0?'#ff4444':'#ffb3c6';ctx.beginPath();ctx.arc(pgx,pgy,9,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#e75480';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(pgx,pgy,9,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#ff9ab2';ctx.beginPath();ctx.ellipse(pgx-5,pgy-7,3,4.5,-0.4,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(pgx+5,pgy-7,3,4.5,0.4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#333';ctx.beginPath();ctx.arc(pgx-3,pgy-1,1.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(pgx+3,pgy-1,1.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6b88';ctx.beginPath();ctx.ellipse(pgx,pgy+3,3,2,0,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+    if(pg.hp<pg.maxHp){ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(pgx-10,pgy-20,20,4);ctx.fillStyle='#ff4444';ctx.fillRect(pgx-10,pgy-20,20*(pg.hp/pg.maxHp),4);}
+  });
+  // 토끼 (반지름 6)
+  G.rabbits.forEach(rb=>{
+    const rx=rb.x-cx,ry=rb.y-cy+rb.hopY;if(rx<-40||rx>sw+40)return;
+    ctx.fillStyle='#e8e0d0';ctx.beginPath();ctx.arc(rx,ry,6,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#ccc';ctx.lineWidth=1;ctx.beginPath();ctx.arc(rx,ry,6,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#e8e0d0';ctx.beginPath();ctx.ellipse(rx-3,ry-9,2,5,-0.2,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(rx+3,ry-9,2,5,0.2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ffb3c6';ctx.beginPath();ctx.ellipse(rx-3,ry-9,1,3.5,-0.2,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(rx+3,ry-9,1,3.5,0.2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6666';ctx.beginPath();ctx.arc(rx-2,ry-1,1,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(rx+2,ry-1,1,0,Math.PI*2);ctx.fill();
+  });
+  // 플레이어 (반지름 11)
+  const px=G.player.x-cx,py=G.player.y-cy,isM=G.gender==='male';
+  ctx.strokeStyle=isM?'#4da6ff':'#ff80b3';ctx.lineWidth=2;ctx.beginPath();ctx.arc(px,py,11,0,Math.PI*2);ctx.stroke();
+  const bg=ctx.createRadialGradient(px-2,py-2,1,px,py,11);bg.addColorStop(0,isM?'#a8d8ff':'#ffb3d9');bg.addColorStop(1,isM?'#1a6abf':'#bf1a6a');
+  ctx.fillStyle=bg;ctx.beginPath();ctx.arc(px,py,11,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(px-3,py-2,2.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(px+3,py-2,2.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#1a1a2e';ctx.beginPath();ctx.arc(px-3,py-2,1.2,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(px+3,py-2,1.2,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#1a1a2e';ctx.lineWidth=1;ctx.beginPath();ctx.arc(px,py+3,2.5,0.1,Math.PI-0.1);ctx.stroke();
+  const sel=getSelected();if(sel){ctx.font='13px serif';ctx.fillText(sel.icon,px+11,py-5);}
+  // 야간
+  if(isNight){
+    ctx.fillStyle='rgba(0,0,28,0.48)';ctx.fillRect(0,0,sw,sh);
+    ctx.font='30px serif';ctx.fillText('🌙',sw-46,32);
+    for(let i=0;i<28;i++){const sx=(i*137)%sw,sy=(i*73)%sh*0.45;const bl=0.4+0.6*Math.abs(Math.sin(T/1000+i));ctx.globalAlpha=bl*0.7;ctx.fillStyle='#fff';ctx.fillRect(sx,sy,2,2);}
+    ctx.globalAlpha=1;
+  }
+}
+canvas.addEventListener('click',e=>{if(G.fishing&&G.fishClickable)catchFish();});
+canvas.addEventListener('touchstart',e=>{if(G.fishing&&G.fishClickable){e.preventDefault();catchFish();}},{passive:false});
+</script>
+</body>
+</html>
